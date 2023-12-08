@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>8</LangVersion>
+        <Nullable>enable</Nullable>
+        <Title>Inject</Title>
+        <Description>依赖注入</Description>
+        <PackageProjectUrl>https://github.com/oliverscode/Pingfan.Inject</PackageProjectUrl>
+        <PackageLicenseUrl>https://github.com/oliverscode/Pingfan.Inject</PackageLicenseUrl>
+        <RepositoryUrl>https://github.com/oliverscode/Pingfan.Inject</RepositoryUrl>
+        <PackageTags>inject, DI</PackageTags>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageIcon>logo.png</PackageIcon>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+      <DocumentationFile>bin\Release\Pingfan.Inject.xml</DocumentationFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="./logo.png">
+            <Pack>True</Pack>
+            <PackagePath></PackagePath>
+        </None>
+    </ItemGroup>
+</Project>
