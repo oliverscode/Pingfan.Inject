@@ -65,6 +65,18 @@ namespace Pingfan.Inject
         }
 
         /// <inheritdoc />
+        public void Push(object instance, string? name = null)
+        {
+            var type = instance.GetType();
+            lock (_lock)
+            {
+                var item = new PushItem(null, type, name, instance);
+                _objectItems.Add(item);
+            }
+        }
+        
+        
+        /// <inheritdoc />
         public void Push<T>(string? name = null)
         {
             var type = typeof(T);
@@ -77,23 +89,76 @@ namespace Pingfan.Inject
                 _objectItems.Add(item);
             }
         }
+        
 
         /// <inheritdoc />
-        public void Push(object instance, string? name = null)
+        public void Push<TI, T>(T instance, string? name = null) where T : TI
         {
-            var type = instance.GetType();
+            var interfaceType = typeof(TI);
+            var instanceType = typeof(T);
             lock (_lock)
             {
-                var item = new PushItem(null, type, name, instance);
+                var item = new PushItem(interfaceType, instanceType, name, instance);
                 _objectItems.Add(item);
             }
         }
+
+   
 
         /// <inheritdoc />
         public void Push<TI, T>(string? name = null) where T : TI
         {
             var interfaceType = typeof(TI);
             var instanceType = typeof(T);
+            lock (_lock)
+            {
+                var item = new PushItem(interfaceType, instanceType, name, null);
+                _objectItems.Add(item);
+            }
+        }
+
+        /// <inheritdoc />
+        public void Push(Type instanceType, string? name = null)
+        {
+            // 判断instanceType是否是接口
+            if (instanceType.IsInterface)
+                throw new Exception("无法注入接口");
+
+            lock (_lock)
+            {
+                var item = new PushItem(instanceType, null, name, null);
+                _objectItems.Add(item);
+            }
+        }
+
+        /// <inheritdoc />
+        public void Push(Type type, object instance, string? name = null)
+        {
+            Type? instanceType = null;
+            Type? interfaceType = null;
+            if (type.IsInterface)
+                interfaceType = type;
+            else
+                instanceType = type;
+
+            // 判断obj是否是type的子类
+            if (instance.GetType().IsAssignableFrom(type) == false)
+                throw new Exception($"无法注入 {instance.GetType()} 到 {type}");
+
+            lock (_lock)
+            {
+                var item = new PushItem(interfaceType, instanceType, name, instance);
+                _objectItems.Add(item);
+            }
+        }
+
+        /// <inheritdoc />
+        public void Push(Type interfaceType, Type instanceType, string? name = null)
+        {
+            // 判断instanceType的类型是否是interfaceType的子类
+            if (instanceType.IsAssignableFrom(interfaceType) == false)
+                throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
+
             lock (_lock)
             {
                 var item = new PushItem(interfaceType, instanceType, name, null);
@@ -108,6 +173,15 @@ namespace Pingfan.Inject
             lock (_lock)
             {
                 return (T)Get(new PopItem(typeof(T), name, 0, defaultValue));
+            }
+        }
+
+        /// <inheritdoc />
+        public object Get(Type instanceType, string? name = null, object? defaultValue = null)
+        {
+            lock (_lock)
+            {
+                return Get(new PopItem(instanceType, name, 0, defaultValue));
             }
         }
 
