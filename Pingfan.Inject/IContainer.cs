@@ -79,20 +79,27 @@ namespace Pingfan.Inject
         void Push(Type instanceType, string? name = null);
 
         /// <summary>
-        /// 注入一个接口或者实例的类型和实例
+        /// 注入一个接口和实例
         /// </summary>
-        /// <param name="type">接口或者实例</param>
+        /// <param name="type">接口类型</param>
         /// <param name="instance">实例</param>
         /// <param name="name">如果重复可以别名区分, 区分大小写</param>
         void Push(Type type, object instance, string? name = null);
 
         /// <summary>
-        /// 注册1个接口类型, 和一个实例类型
+        /// 注册一个接口类型, 和一个实例类型
         /// </summary>
         /// <param name="interfaceType">接口的类型</param>
         /// <param name="instanceType">实例的类型</param>
         /// <param name="name">如果重复可以别名区分, 区分大小写</param>
         void Push(Type interfaceType, Type instanceType, string? name = null);
+
+        /// <summary>
+        /// 注册一个实例类型
+        /// </summary>
+        /// <param name="instanceType">实例的类型</param>
+        /// <param name="name">如果重复可以别名区分, 区分大小写</param>
+        void Push<T>(Type instanceType, string? name = null);
 
         /// <summary>
         /// 获取容器中的实例
