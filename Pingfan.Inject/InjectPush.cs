@@ -5,7 +5,7 @@ namespace Pingfan.Inject
     /// <summary>
     /// 注入的对象
     /// </summary>
-    class PushItem
+    public class InjectPush
     {
         public Type? InterfaceType { get; }
         public Type? InstanceType { get; }
@@ -14,7 +14,7 @@ namespace Pingfan.Inject
         public object? Instance { get; set; }
 
 
-        public PushItem(
+        public InjectPush(
             Type? interfaceType,
             Type? instanceType,
             string? instanceName,
