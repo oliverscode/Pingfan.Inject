@@ -70,7 +70,7 @@ namespace Pingfan.Inject
         public void Push(object instance, string? name = null)
         {
             var type = instance.GetType();
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(null, type, name, instance);
                 _objectItems.Add(item);
@@ -85,7 +85,7 @@ namespace Pingfan.Inject
             if (type.IsInterface)
                 throw new Exception("无法注入接口");
 
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(null, type, name, null);
                 _objectItems.Add(item);
@@ -99,7 +99,7 @@ namespace Pingfan.Inject
             if (type.IsInterface)
                 throw new Exception("无法注入接口");
 
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(null, type, name, instance);
                 _objectItems.Add(item);
@@ -112,7 +112,7 @@ namespace Pingfan.Inject
         {
             var interfaceType = typeof(TI);
             var instanceType = typeof(T);
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(interfaceType, instanceType, name, instance);
                 _objectItems.Add(item);
@@ -125,7 +125,7 @@ namespace Pingfan.Inject
         {
             var interfaceType = typeof(TI);
             var instanceType = typeof(T);
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(interfaceType, instanceType, name, null);
                 _objectItems.Add(item);
@@ -139,7 +139,7 @@ namespace Pingfan.Inject
             if (instanceType.IsInterface)
                 throw new Exception("无法注入接口");
 
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(null, instanceType, name, null);
                 _objectItems.Add(item);
@@ -155,7 +155,7 @@ namespace Pingfan.Inject
             if (interfaceType.IsAssignableFrom(instanceType))
                 throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
 
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(interfaceType, instanceType, name, instance);
                 _objectItems.Add(item);
@@ -169,7 +169,7 @@ namespace Pingfan.Inject
             if (interfaceType.IsAssignableFrom(instanceType))
                 throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
 
-            lock (((Container)Root).Lock)
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(interfaceType, instanceType, name, null);
                 _objectItems.Add(item);
@@ -185,7 +185,8 @@ namespace Pingfan.Inject
 
             if (interfaceType.IsAssignableFrom(instanceType) == false)
                 throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
-            lock (Lock)
+            
+            // lock (((Container)Root).Lock)
             {
                 var item = new InjectPush(interfaceType, instanceType, name, null);
                 _objectItems.Add(item);
@@ -196,7 +197,7 @@ namespace Pingfan.Inject
         /// <inheritdoc />
         public T Get<T>(string? name = null, object? defaultValue = null)
         {
-            lock (Lock)
+            // lock (Lock)
             {
                 return (T)Get(new InjectPop(typeof(T), name, 0, defaultValue));
             }
@@ -205,7 +206,7 @@ namespace Pingfan.Inject
         /// <inheritdoc />
         public object Get(Type instanceType, string? name = null, object? defaultValue = null)
         {
-            lock (Lock)
+            // lock (Lock)
             {
                 return Get(new InjectPop(instanceType, name, 0, defaultValue));
             }
@@ -282,8 +283,7 @@ namespace Pingfan.Inject
         /// <inheritdoc />
         public object Invoke(object instance, MethodInfo methodInfo)
         {
-            // var parameters = methodInfo.GetParameters();
-            var parameters = InjectParameterInfoCache.GetParameters(methodInfo);
+            var parameters = methodInfo.GetParametersByCache();
             var parameterValues = new object[parameters.Length];
             for (var i = 0; i < parameters.Length; i++)
             {
@@ -297,7 +297,7 @@ namespace Pingfan.Inject
 
 
                 var defaultValue = attr?.DefaultValue;
-                if (defaultValue == null && !(parameterInfo.DefaultValue is DBNull))
+                if (defaultValue == null && parameterInfo.HasDefaultValue)
                     defaultValue = parameterInfo.DefaultValue;
 
 
@@ -358,17 +358,17 @@ namespace Pingfan.Inject
                     {
                         // 获取所有的构造函数
                         // var constructors = injectPop.Type.GetConstructors();
-                        var constructors = InjectConstructorInfoCache.GetConstructors(injectPop.Type);
-                        
-                        
-                        
+                        var constructors = injectPop.Type.GetConstructorsByCache();
+
+
                         // 先判断是否有Inject特性
                         var constructorInfo = constructors.FirstOrDefault(p => p.IsDefined(typeof(InjectAttribute)));
                         if (constructorInfo == null)
                             // 获取参数最多的构造函数
-                            constructorInfo = constructors.OrderByDescending(p => p.GetParameters().Length).First();
+                            constructorInfo = constructors.OrderByDescending(p => p.GetParametersByCache().Length)
+                                .First();
 
-                        var parameterInfos = constructorInfo.GetParameters();
+                        var parameterInfos = constructorInfo.GetParametersByCache();
                         var parameters = new object[parameterInfos.Length];
                         for (var i = 0; i < parameterInfos.Length; i++)
                         {
@@ -398,6 +398,8 @@ namespace Pingfan.Inject
                             var defaultValue = injectPop.DefaultValue;
                             if (defaultValue == null)
                                 defaultValue = attr?.DefaultValue;
+                            if (defaultValue == null && parameterInfo.HasDefaultValue)
+                                defaultValue = parameterInfo.DefaultValue;
 
 
                             parameters[i] = Get(new InjectPop(parameterInfo.ParameterType, name, ++injectPop.Deep,
@@ -407,8 +409,7 @@ namespace Pingfan.Inject
                         injectPush.Instance = constructorInfo.Invoke(parameters);
 
                         // 注入属性
-                        // var properties = injectPop.Type.GetProperties()
-                        var properties = InjectPropertyInfoCache.GetProperties(injectPop.Type)
+                        var properties = injectPop.Type.GetPropertiesByCache()
                             .Where(p => p.IsDefined(typeof(InjectAttribute)));
                         foreach (var property in properties)
                         {
@@ -433,7 +434,7 @@ namespace Pingfan.Inject
                                 var defaultValue = injectPop.DefaultValue;
                                 if (defaultValue == null)
                                     defaultValue = attr?.DefaultValue;
-
+                         
                                 var propertyValue =
                                     Get(new InjectPop(propertyType, name, ++injectPop.Deep, defaultValue));
                                 property.SetValue(injectPush.Instance, propertyValue);
