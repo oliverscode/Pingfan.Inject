@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -66,17 +67,6 @@ namespace Pingfan.Inject
             }
         }
 
-        /// <inheritdoc />
-        public void Push(object instance, string? name = null)
-        {
-            var type = instance.GetType();
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(null, type, name, instance);
-                _objectItems.Add(item);
-            }
-        }
-
 
         /// <inheritdoc />
         public void Push<T>(string? name = null)
@@ -85,11 +75,7 @@ namespace Pingfan.Inject
             if (type.IsInterface)
                 throw new Exception("无法注入接口");
 
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(null, type, name, null);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(null, type, name, null));
         }
 
         /// <inheritdoc />
@@ -99,11 +85,7 @@ namespace Pingfan.Inject
             if (type.IsInterface)
                 throw new Exception("无法注入接口");
 
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(null, type, name, instance);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(null, type, name, instance));
         }
 
 
@@ -112,11 +94,7 @@ namespace Pingfan.Inject
         {
             var interfaceType = typeof(TI);
             var instanceType = typeof(T);
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(interfaceType, instanceType, name, instance);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(interfaceType, instanceType, name, instance));
         }
 
 
@@ -125,72 +103,56 @@ namespace Pingfan.Inject
         {
             var interfaceType = typeof(TI);
             var instanceType = typeof(T);
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(interfaceType, instanceType, name, null);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(interfaceType, instanceType, name, null));
         }
 
         /// <inheritdoc />
         public void Push(Type instanceType, string? name = null)
         {
-            // 判断instanceType是否是接口
-            if (instanceType.IsInterface)
-                throw new Exception("无法注入接口");
-
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(null, instanceType, name, null);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(null, instanceType, name, null));
         }
 
         /// <inheritdoc />
         public void Push(Type interfaceType, object instance, string? name = null)
         {
-            Type? instanceType = instance.GetType();
-
-            // 判断instanceType是否是interfaceType的子类
-            if (interfaceType.IsAssignableFrom(instanceType))
-                throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
-
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(interfaceType, instanceType, name, instance);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(interfaceType, instance.GetType(), name, instance));
         }
 
         /// <inheritdoc />
         public void Push(Type interfaceType, Type instanceType, string? name = null)
         {
-            // 判断instanceType的类型是否是interfaceType的子类
-            if (interfaceType.IsAssignableFrom(instanceType))
-                throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
-
-            // lock (((Container)Root).Lock)
-            {
-                var item = new InjectPush(interfaceType, instanceType, name, null);
-                _objectItems.Add(item);
-            }
+            Push(new InjectPush(interfaceType, instanceType, null, null));
         }
 
         /// <inheritdoc />
         public void Push<T>(Type instanceType, string? name = null)
         {
             var interfaceType = typeof(T);
-            if (interfaceType.IsInterface == false)
-                throw new Exception("T必须是接口");
+            Push(new InjectPush(interfaceType, instanceType, name, null));
+        }
 
-            if (interfaceType.IsAssignableFrom(instanceType) == false)
-                throw new Exception($"无法注入 {instanceType} 到 {interfaceType}");
-            
-            // lock (((Container)Root).Lock)
+        private void Push(InjectPush push)
+        {
+            if (push.InterfaceType?.IsInterface == false)
+                throw new ArgumentException($"{nameof(push.InterfaceType)}必须是接口");
+            if (push.InstanceType?.IsInterface == true)
+                throw new ArgumentException($"{nameof(push.InstanceType)}不能是接口");
+
+            if (push.InstanceType != null && push.InterfaceType != null)
             {
-                var item = new InjectPush(interfaceType, instanceType, name, null);
-                _objectItems.Add(item);
+                // 判断instanceType的类型是否是interfaceType的子类
+                if (push.InterfaceType.IsAssignableFrom(push.InstanceType) == false)
+                    throw new Exception($"无法注入 {push.InstanceType} 到 {push.InterfaceType}");
             }
+
+            // 判断接口类型和实例类型以及名字是否存在, 如果存在就把实例更新一下
+            var item = _objectItems.FirstOrDefault(x =>
+                x.InterfaceType == push.InterfaceType && x.InstanceType == push.InstanceType &&
+                string.Equals(x.InstanceName, push.InstanceName, StringComparison.OrdinalIgnoreCase));
+            if (item != null)
+                item.Instance = push.Instance;
+            else
+                _objectItems.Add(push);
         }
 
 
@@ -212,100 +174,55 @@ namespace Pingfan.Inject
             }
         }
 
+
         /// <inheritdoc />
         public bool Has<T>(string? name = null)
         {
             var type = typeof(T);
-            if (type.IsInterface)
-            {
-                var objectItems = _objectItems.Where(x => x.InterfaceType == type).ToList();
-                if (objectItems.Count >= 1) // 找到多个, 用name再匹配一次
-                {
-                    InjectPush injectPush;
-                    if (objectItems.Count > 1)
-                        injectPush = objectItems.FirstOrDefault(x =>
-                            string.Equals(x.InstanceName, name, StringComparison.OrdinalIgnoreCase)) ?? objectItems[0];
-                    else
-                        injectPush = objectItems.Last();
+            return Has(type, name);
+        }
 
-                    return injectPush.Instance != null;
-                }
+        /// <inheritdoc />
+        public bool Has(Type type, string? name = null)
+        {
+            // if (type.IsInterface)
+            // {
+            //     var objectItems = _objectItems.Where(x => x.InterfaceType == type && x.InstanceName == name).ToList();
+            //     var result = objectItems.Any(p => p.Instance != null);
+            //     if (result == false && Parent != null)
+            //         return Parent.Has(type, name);
+            // }
+            // else
+            // {
+            //     var objectItems = _objectItems.Where(x => x.InstanceType == type && x.InstanceName == name).ToList();
+            //     var result = objectItems.Any(p => p.Instance != null);
+            //     if (result == false && Parent != null)
+            //         return Parent.Has(type, name);
+            // }
 
-                if (Parent != null)
-                {
-                    // 如果没有找到, 则从父容器中寻找
-                    return ((Container)Parent).Has<T>(name);
-                }
-            }
-            else if (type.IsClass)
-            {
-                var objectItems = _objectItems.Where(x => x.InstanceType == type).ToList();
-                if (objectItems.Count >= 1) // 找到多个, 用name再匹配一次
-                {
-                    InjectPush injectPush;
-                    if (objectItems.Count > 1)
-                    {
-                        injectPush = objectItems.FirstOrDefault(x =>
-                            string.Equals(x.InstanceName, name, StringComparison.OrdinalIgnoreCase)) ?? objectItems[0];
-                    }
-                    else
-                    {
-                        injectPush = objectItems.Last();
-                    }
-
-                    return injectPush != null;
-                }
-
-                if (Parent != null)
-                {
-                    // 如果没有找到, 则从父容器中寻找
-                    return ((Container)Parent).Has<T>(name);
-                }
-            }
-
+            var result = _objectItems.Any(x =>
+                (x.InstanceType == type || x.InterfaceType == type) && x.InstanceName == name);
+            if (result)
+                return true;
+            if (result == false && Parent != null)
+                return Parent.Has(type, name);
             return false;
         }
 
         /// <inheritdoc />
         public T New<T>() where T : class
         {
-            Push<T>();
-            return Get<T>();
+            var type = typeof(T);
+            return (T)New(type);
         }
 
         /// <inheritdoc />
         public object New(Type type)
         {
+            if (type.IsInterface)
+                throw new Exception("无法创建接口");
             Push(type);
             return Get(type);
-        }
-
-        /// <inheritdoc />
-        public object Invoke(object instance, MethodInfo methodInfo)
-        {
-            var parameters = methodInfo.GetParametersByCache();
-            var parameterValues = new object[parameters.Length];
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var parameterInfo = parameters[i];
-                var attr = parameterInfo.GetCustomAttribute<InjectAttribute>();
-
-
-                var name = attr?.Name;
-                if (string.IsNullOrEmpty(name))
-                    name = parameterInfo.Name;
-
-
-                var defaultValue = attr?.DefaultValue;
-                if (defaultValue == null && parameterInfo.HasDefaultValue)
-                    defaultValue = parameterInfo.DefaultValue;
-
-
-                parameterValues[i] = Get(new InjectPop(parameterInfo.ParameterType, name, 0, defaultValue));
-            }
-
-            // return method.DynamicInvoke(parameterValues);
-            return methodInfo.Invoke(instance, parameterValues);
         }
 
 
@@ -434,7 +351,7 @@ namespace Pingfan.Inject
                                 var defaultValue = injectPop.DefaultValue;
                                 if (defaultValue == null)
                                     defaultValue = attr?.DefaultValue;
-                         
+
                                 var propertyValue =
                                     Get(new InjectPop(propertyType, name, ++injectPop.Deep, defaultValue));
                                 property.SetValue(injectPush.Instance, propertyValue);

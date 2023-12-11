@@ -39,14 +39,7 @@ namespace Pingfan.Inject
         /// </summary>
         List<IContainer> Children { get; }
 
-
-        /// <summary>
-        /// 注入实例
-        /// </summary>
-        /// <param name="instance">必须是实例</param>
-        /// <param name="name">如果重复可以别名区分, 不区分大小写</param>
-        void Push(object instance, string? name = null);
-
+        
         /// <summary>
         /// 注入实例类型
         /// </summary>
@@ -133,9 +126,17 @@ namespace Pingfan.Inject
         /// 是否有指定类型的实例
         /// </summary>
         /// <param name="name"></param>
-        /// <typeparam name="T"></typeparam>
+        /// <typeparam name="T">接口或者实例类型</typeparam>
         /// <returns></returns>
         bool Has<T>(string? name = null);
+
+        /// <summary>
+        /// 是否有指定类型的实例
+        /// </summary>
+        /// <param name="type">接口或者实例类型</param>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        bool Has(Type type, string? name = null);
 
         /// <summary>
         /// 注入实例, 并且再此获取这个值
@@ -149,13 +150,13 @@ namespace Pingfan.Inject
         /// </summary>
         object New(Type type);
 
-        /// <summary>
-        /// 调用一个方法, 并注入参数
-        /// </summary>
-        /// <param name="instance"></param>
-        /// <param name="methodInfo"></param>
-        /// <returns></returns>
-        object Invoke(object instance, MethodInfo methodInfo);
+        // /// <summary>
+        // /// 调用一个方法, 并注入参数
+        // /// </summary>
+        // /// <param name="instance"></param>
+        // /// <param name="methodInfo"></param>
+        // /// <returns></returns>
+        // object Invoke(object instance, MethodInfo methodInfo);
 
         /// <summary>
         /// 创建一个子容器
