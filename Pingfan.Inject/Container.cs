@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -135,10 +134,12 @@ namespace Pingfan.Inject
         {
             if (push.InterfaceType?.IsInterface == false)
                 throw new ArgumentException($"{nameof(push.InterfaceType)}必须是接口");
-            if (push.InstanceType?.IsInterface == true)
+            if (push.InstanceType.IsInterface == true)
                 throw new ArgumentException($"{nameof(push.InstanceType)}不能是接口");
+            if (push.InstanceType == null)
+                throw new ArgumentException($"{nameof(push.InstanceType)}不能为null");
 
-            if (push.InstanceType != null && push.InterfaceType != null)
+            if (push.InterfaceType != null)
             {
                 // 判断instanceType的类型是否是interfaceType的子类
                 if (push.InterfaceType.IsAssignableFrom(push.InstanceType) == false)
@@ -159,19 +160,124 @@ namespace Pingfan.Inject
         /// <inheritdoc />
         public T Get<T>(string? name = null, object? defaultValue = null)
         {
-            // lock (Lock)
-            {
-                return (T)Get(new InjectPop(typeof(T), name, 0, defaultValue));
-            }
+            return (T)Get(new InjectPop(typeof(T), name, 0, defaultValue));
         }
 
         /// <inheritdoc />
         public object Get(Type instanceType, string? name = null, object? defaultValue = null)
         {
-            // lock (Lock)
+            return Get(new InjectPop(instanceType, name, 0, defaultValue));
+        }
+
+        private object Get(InjectPop injectPop)
+        {
+            injectPop.Deep++;
+            if (injectPop.Deep > MaxDeep)
+                throw new Exception($"递归深度超过{MaxDeep}层, 可能存在循环依赖");
+
+            var objectItems = _objectItems
+                .Where(x => (x.InterfaceType == injectPop.Type || x.InstanceType == injectPop.Type) &&
+                            x.InstanceName == injectPop.Name).ToList();
+
+
+            // 有多个就返回最后一个
+            if (objectItems.Count >= 1)
             {
-                return Get(new InjectPop(instanceType, name, 0, defaultValue));
+                var push = objectItems[objectItems.Count - 1];
+                if (push.Instance == null)
+                {
+                    // 获取所有的构造函数
+                    var constructors = push.InstanceType.GetConstructorsByCache();
+
+
+                    ConstructorInfo? constructorInfo = null;
+                    // 先判断是否有Inject特性
+                    foreach (var info in constructors)
+                    {
+                        var attr = InjectCache<InjectAttribute>.GetCustomAttributeCache(info);
+                        if (attr == null) continue;
+                        constructorInfo = info;
+                        break;
+                    }
+
+                    // 获取参数最多的构造函数
+                    if (constructorInfo == null)
+                        constructorInfo = constructors.OrderByDescending(p => p.GetParametersByCache().Length)
+                            .First();
+
+                    var parameterInfos = constructorInfo.GetParametersByCache();
+                    var parameters = new object[parameterInfos.Length];
+                    for (var i = 0; i < parameterInfos.Length; i++)
+                    {
+                        var parameterInfo = parameterInfos[i];
+                        {
+                            if (parameterInfo.ParameterType == this.GetType())
+                                throw new Exception("无法在构造参数中注入容器, 请使用属性注入");
+                        }
+                        {
+                            // 判断parameterInfo.ParameterType 是否是this的子类
+                            // if (parameterInfo.ParameterType.IsAssignableFrom(this.GetType()))
+                            // if (parameterInfo.ParameterType.Name == typeof(IContainer).Name)
+                            // {
+                            //     parameters[i] = this;
+                            //     continue;
+                            // }
+                        }
+
+
+                        var attr = InjectCache<InjectAttribute>.GetCustomAttributeCache(parameterInfo);
+
+                        // 获取名字
+                        var name = injectPop.Name ?? attr?.Name ?? null;
+                        // 获取默认值
+                        var defaultValue = injectPop.DefaultValue ?? attr?.DefaultValue;
+                        parameters[i] = Get(new InjectPop(parameterInfo.ParameterType, name, injectPop.Deep,
+                            defaultValue));
+                    }
+
+                    push.Instance = constructorInfo.Invoke(parameters);
+
+                    // 注入属性
+                    var properties = injectPop.Type.GetPropertiesByCache();
+                    foreach (var property in properties)
+                    {
+                        var attr = InjectCache<InjectAttribute>.GetCustomAttributeCache(property);
+                        if (attr == null) continue;
+
+                        var propertyType = property.PropertyType;
+                        // 判断propertyType是否是IContainer的实现类或者子类
+                        if (typeof(IContainer) == property || typeof(IContainer).IsAssignableFrom(propertyType))
+                        {
+                            property.SetValue(push.Instance, this);
+                        }
+                        else
+                        {
+                            var name = injectPop.Name ?? attr?.Name;
+                            var defaultValue = injectPop.DefaultValue ?? attr?.DefaultValue;
+                            var propertyValue = Get(new InjectPop(propertyType, name, injectPop.Deep, defaultValue));
+                            property.SetValue(push.Instance, propertyValue);
+                        }
+                    }
+
+
+                    if (push.Instance is IContainerReady containerReady)
+                    {
+                        containerReady.OnContainerReady();
+                    }
+                }
+
+                return push.Instance!;
             }
+
+            if (Parent != null)
+            {
+                return ((Container)Parent!).Get(injectPop);
+            }
+
+            if (injectPop.DefaultValue != null)
+                return injectPop.DefaultValue;
+
+            return this.OnNotFound(injectPop);
         }
 
 
@@ -185,21 +291,6 @@ namespace Pingfan.Inject
         /// <inheritdoc />
         public bool Has(Type type, string? name = null)
         {
-            // if (type.IsInterface)
-            // {
-            //     var objectItems = _objectItems.Where(x => x.InterfaceType == type && x.InstanceName == name).ToList();
-            //     var result = objectItems.Any(p => p.Instance != null);
-            //     if (result == false && Parent != null)
-            //         return Parent.Has(type, name);
-            // }
-            // else
-            // {
-            //     var objectItems = _objectItems.Where(x => x.InstanceType == type && x.InstanceName == name).ToList();
-            //     var result = objectItems.Any(p => p.Instance != null);
-            //     if (result == false && Parent != null)
-            //         return Parent.Has(type, name);
-            // }
-
             var result = _objectItems.Any(x =>
                 (x.InstanceType == type || x.InterfaceType == type) && x.InstanceName == name);
             if (result)
@@ -207,6 +298,40 @@ namespace Pingfan.Inject
             if (result == false && Parent != null)
                 return Parent.Has(type, name);
             return false;
+        }
+
+        /// <inheritdoc />
+        public void Pop<T>(string? name = null)
+        {
+            var type = typeof(T);
+            Pop(type, name);
+        }
+
+        /// <inheritdoc />
+        public void Pop(Type type, string? name = null)
+        {
+            _objectItems.RemoveAll(x =>
+                (x.InstanceType == type || x.InterfaceType == type) && x.InstanceName == name);
+
+            if (Parent != null)
+                Parent.Pop(type, name);
+        }
+
+        /// <inheritdoc />
+        public void Delete<T>(string? name = null)
+        {
+            var type = typeof(T);
+            Delete(type, name);
+        }
+
+        /// <inheritdoc />
+        public void Delete(Type type, string? name = null)
+        {
+            foreach (var injectPush in _objectItems.Where(x =>
+                         (x.InstanceType == type || x.InterfaceType == type) && x.InstanceName == name))
+            {
+                injectPush.Instance = null;
+            }
         }
 
         /// <inheritdoc />
@@ -225,167 +350,6 @@ namespace Pingfan.Inject
             return Get(type);
         }
 
-
-        private object Get(InjectPop injectPop)
-        {
-            if (injectPop.Deep > MaxDeep)
-                throw new Exception($"递归深度超过{MaxDeep}层, 可能存在循环依赖");
-
-            if (injectPop.Type.IsInterface)
-            {
-                var objectItems = _objectItems.Where(x => x.InterfaceType == injectPop.Type).ToList();
-                if (objectItems.Count >= 1) // 找到多个, 用name再匹配一次
-                {
-                    InjectPush injectPush;
-                    if (objectItems.Count > 1)
-                        injectPush = objectItems.FirstOrDefault(x =>
-                                         string.Equals(x.InstanceName, injectPop.Name,
-                                             StringComparison.OrdinalIgnoreCase)) ??
-                                     objectItems[0];
-                    else
-                        injectPush = objectItems.Last();
-                    return Get(new InjectPop(injectPush.InstanceType!, injectPop.Name, ++injectPop.Deep,
-                        injectPop.DefaultValue));
-                }
-
-                if (Parent != null)
-                {
-                    // 如果没有找到, 则从父容器中寻找
-                    injectPop.Deep++;
-                    return ((Container)Parent).Get(injectPop);
-                }
-            }
-            else if (injectPop.Type.IsClass || injectPop.Type.IsValueType)
-            {
-                var objectItems = _objectItems.Where(x => x.InstanceType == injectPop.Type).ToList();
-                if (objectItems.Count >= 1) // 找到多个, 用name再匹配一次
-                {
-                    InjectPush injectPush;
-                    if (objectItems.Count > 1)
-                    {
-                        injectPush = objectItems.FirstOrDefault(x =>
-                                         string.Equals(x.InstanceName, injectPop.Name,
-                                             StringComparison.OrdinalIgnoreCase)) ??
-                                     objectItems[0];
-                    }
-                    else // 最后一个
-                        injectPush = objectItems.Last();
-
-                    if (injectPush.Instance == null)
-                    {
-                        // 获取所有的构造函数
-                        // var constructors = injectPop.Type.GetConstructors();
-                        var constructors = injectPop.Type.GetConstructorsByCache();
-
-
-                        // 先判断是否有Inject特性
-                        var constructorInfo = constructors.FirstOrDefault(p => p.IsDefined(typeof(InjectAttribute)));
-                        if (constructorInfo == null)
-                            // 获取参数最多的构造函数
-                            constructorInfo = constructors.OrderByDescending(p => p.GetParametersByCache().Length)
-                                .First();
-
-                        var parameterInfos = constructorInfo.GetParametersByCache();
-                        var parameters = new object[parameterInfos.Length];
-                        for (var i = 0; i < parameterInfos.Length; i++)
-                        {
-                            var parameterInfo = parameterInfos[i];
-                            {
-                                if (parameterInfo.ParameterType == this.GetType())
-                                    throw new Exception("无法在构造参数中注入容器, 请使用属性注入");
-                            }
-                            {
-                                // 判断parameterInfo.ParameterType 是否是this的子类
-                                // if (parameterInfo.ParameterType.IsAssignableFrom(this.GetType()))
-                                // if (parameterInfo.ParameterType.Name == typeof(IContainer).Name)
-                                // {
-                                //     parameters[i] = this;
-                                //     continue;
-                                // }
-                            }
-
-                            var attr = parameterInfo.GetCustomAttribute<InjectAttribute>();
-                            // 获取特性上的名字
-                            var name = injectPop.Name;
-                            if (string.IsNullOrEmpty(name))
-                                name = attr?.Name;
-                            else if (string.IsNullOrEmpty(name))
-                                name = parameterInfo.Name;
-
-                            var defaultValue = injectPop.DefaultValue;
-                            if (defaultValue == null)
-                                defaultValue = attr?.DefaultValue;
-                            if (defaultValue == null && parameterInfo.HasDefaultValue)
-                                defaultValue = parameterInfo.DefaultValue;
-
-
-                            parameters[i] = Get(new InjectPop(parameterInfo.ParameterType, name, ++injectPop.Deep,
-                                defaultValue));
-                        }
-
-                        injectPush.Instance = constructorInfo.Invoke(parameters);
-
-                        // 注入属性
-                        var properties = injectPop.Type.GetPropertiesByCache()
-                            .Where(p => p.IsDefined(typeof(InjectAttribute)));
-                        foreach (var property in properties)
-                        {
-                            // popItem.Deep++;
-                            var propertyType = property.PropertyType;
-                            // 判断propertyType是否是IContainer的实现类或者子类
-                            if (typeof(IContainer).IsAssignableFrom(propertyType))
-                            {
-                                property.SetValue(injectPush.Instance, this);
-                            }
-                            else
-                            {
-                                var attr = property.GetCustomAttribute<InjectAttribute>();
-
-                                // 获取特性上的名字
-                                var name = injectPop.Name;
-                                if (string.IsNullOrEmpty(name))
-                                    name = attr?.Name;
-                                else if (string.IsNullOrEmpty(name))
-                                    name = property.Name;
-
-                                var defaultValue = injectPop.DefaultValue;
-                                if (defaultValue == null)
-                                    defaultValue = attr?.DefaultValue;
-
-                                var propertyValue =
-                                    Get(new InjectPop(propertyType, name, ++injectPop.Deep, defaultValue));
-                                property.SetValue(injectPush.Instance, propertyValue);
-                            }
-                        }
-
-
-                        if (injectPush.Instance is IContainerReady containerReady)
-                        {
-                            containerReady.OnContainerReady();
-                        }
-                    }
-
-
-                    return injectPush.Instance!;
-                }
-
-
-                if (Parent != null)
-                {
-                    // 如果没有找到, 则从父容器中寻找
-                    injectPop.Deep++;
-                    return ((Container)Parent).Get(injectPop);
-                }
-            }
-
-
-            if (injectPop.DefaultValue != null)
-                return injectPop.DefaultValue;
-
-            return this.OnNotFound(injectPop);
-        }
-
-
         /// <inheritdoc />
         public IContainer CreateContainer()
         {
@@ -393,7 +357,6 @@ namespace Pingfan.Inject
             this.Children.Add(child);
             return child;
         }
-
 
         /// <inheritdoc />
         public void Dispose()

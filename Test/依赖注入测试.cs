@@ -100,7 +100,7 @@ namespace Test
             public string Name { get; set; }
 
 
-            public IAnimal BB { get; set; } = new Dog();
+            public IAnimal BB { get; set; }
 
             public AA(string name)
             {
@@ -109,13 +109,13 @@ namespace Test
 
             public void OnContainerReady()
             {
-                this.Container = this.Container.CreateContainer();
-
-                this.Container.Push("BB");
-                this.Container.Push<BB>();
-                this.Container.Root.OnNotFound = type => new BB();
-
-                this.BB = this.Container.Get<BB>();
+                // var subContainer = this.Container.CreateContainer();
+                //
+                // subContainer.Push("BB");
+                // subContainer.Push<BB>();
+                //
+                //
+                // this.BB = subContainer.Get<BB>();
             }
         }
 
@@ -155,7 +155,7 @@ namespace Test
             container.Push<IAnimal, Person>();
             var result = container.Get<IAnimal>();
 
-            Assert.Equal("Dog", result.Name);
+            Assert.Equal("Person", result.Name);
         }
 
         [Fact] // 注入2个接口和实例, 要名字的情况
@@ -174,7 +174,7 @@ namespace Test
         {
             var container = new Container();
             container.Push<IAnimal, Dog>();
-            container.Push<IAnimal, Person>("p");
+            container.Push<IAnimal, Person>();
             var result = container.Get<Person>();
 
             Assert.Equal("Person", result.Name);
@@ -321,12 +321,22 @@ namespace Test
             IContainer container = new Container();
             container.Push<AA>();
             container.Push("AA");
-
-            var result = container.Get<AA>();
-            Assert.Equal("AA", result.Name);
-
-
-            Assert.Equal("BB", result.BB.Name);
+            Assert.True(container.Get<AA>().Name == "AA");
+            
+            var subContainer = container.CreateContainer();
+            subContainer.Push<BB>();
+            Assert.True(subContainer.Get<BB>().Name == "AA");
+            
+            subContainer.Delete<BB>();
+            
+            container.Push("BB");
+            Assert.True(subContainer.Get<BB>().Name == "BB");
+            
+           
+            subContainer.Dispose();
+            Assert.True(container.Get<AA>().Name == "AA");
+            
+          
         }
 
         [Fact] // 实力或者接口是否存在
@@ -335,6 +345,8 @@ namespace Test
             IContainer container = new Container();
             container.Push<AA>();
             container.Push("AA");
+
+
 
             Assert.True(container.Has<AA>());
             Assert.False(container.Has<IAnimal>());

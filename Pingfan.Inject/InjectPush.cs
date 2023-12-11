@@ -8,7 +8,7 @@ namespace Pingfan.Inject
     public class InjectPush
     {
         public Type? InterfaceType { get; }
-        public Type? InstanceType { get; }
+        public Type InstanceType { get; }
 
         public string? InstanceName { get; }
         public object? Instance { get; set; }
@@ -16,15 +16,13 @@ namespace Pingfan.Inject
 
         public InjectPush(
             Type? interfaceType,
-            Type? instanceType,
+            Type instanceType,
             string? instanceName,
             object? instance)
         {
             InterfaceType = interfaceType;
             InstanceType = instanceType;
-            if (interfaceType is null && instanceType is null)
-                throw new Exception("接口和实例不能同时为空");
-
+          
             // InterfaceName = interfaceType.GetCustomAttribute<Attributes.NameAttribute>()?.Name;
             // InstanceName = instanceType.GetCustomAttribute<Attributes.NameAttribute>()?.Name;
             Instance = instance;

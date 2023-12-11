@@ -137,6 +137,39 @@ namespace Pingfan.Inject
         /// <param name="name"></param>
         /// <returns></returns>
         bool Has(Type type, string? name = null);
+        
+        /// <summary>
+        /// 取消注册指定类型的接口和实例类型
+        /// </summary>
+        /// <param name="name"></param>
+        /// <typeparam name="T">接口或者实例类型</typeparam>
+        /// <returns></returns>
+        void Pop<T>(string? name = null);
+
+        /// <summary>
+        /// 取消注册指定类型的接口和实例类型
+        /// </summary>
+        /// <param name="type">接口或者实例类型</param>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        void Pop(Type type, string? name = null);
+        
+        
+        /// <summary>
+        /// 删除指定类型的接口和实例
+        /// </summary>
+        /// <param name="name"></param>
+        /// <typeparam name="T">接口或者实例类型</typeparam>
+        /// <returns></returns>
+        void Delete<T>(string? name = null);
+
+        /// <summary>
+        /// 删除指定类型的接口和实例
+        /// </summary>
+        /// <param name="type">接口或者实例类型</param>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        void Delete(Type type, string? name = null);
 
         /// <summary>
         /// 注入实例, 并且再此获取这个值

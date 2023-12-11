@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace Pingfan.Inject
 {
-    public static class InjectParameterInfoCache
+    public static class InjectCache
     {
         // 线程安全的集合
         private static ConcurrentDictionary<MethodInfo, ParameterInfo[]> ParameterInfoCache { get; } =
@@ -64,11 +64,12 @@ namespace Pingfan.Inject
             PropertyInfoCache.TryAdd(type, propertyInfos);
             return propertyInfos;
         }
-        
-        
+
+
         // 线程安全的集合
         private static ConcurrentDictionary<ConstructorInfo, ParameterInfo[]> FieldInfoCache { get; } =
             new ConcurrentDictionary<ConstructorInfo, ParameterInfo[]>();
+
         /// <summary>
         /// 获取构造函数的参数, 并且缓存
         /// </summary>
@@ -83,5 +84,55 @@ namespace Pingfan.Inject
             FieldInfoCache.TryAdd(constructorInfo, parameterInfos);
             return parameterInfos;
         }
+    }
+
+
+    public static class InjectCache<T> where T : Attribute
+    {
+       
+        // 线程安全的集合
+        private static ConcurrentDictionary<PropertyInfo, T> PropertyInfoCache { get; } =
+            new ConcurrentDictionary<PropertyInfo, T>();
+
+        public static T? GetCustomAttributeCache(PropertyInfo info)
+        {
+            if (PropertyInfoCache.TryGetValue(info, out var result))
+                return result;
+
+            result = info.GetCustomAttribute<T>();
+            PropertyInfoCache.TryAdd(info, result);
+            return result;
+        }
+        
+        
+        // 线程安全的集合
+        private static ConcurrentDictionary<ParameterInfo, T> ParameterInfoCache { get; } =
+            new ConcurrentDictionary<ParameterInfo, T>();
+
+        public static T? GetCustomAttributeCache(ParameterInfo info)
+        {
+            if (ParameterInfoCache.TryGetValue(info, out var result))
+                return result;
+
+            result = info.GetCustomAttribute<T>();
+            ParameterInfoCache.TryAdd(info, result);
+            return result;
+        }
+        
+        
+        // 线程安全的集合
+        private static ConcurrentDictionary<ConstructorInfo, T> ConstructorInfoCache { get; } =
+            new ConcurrentDictionary<ConstructorInfo, T>();
+
+        public static T? GetCustomAttributeCache(ConstructorInfo info)
+        {
+            if (ConstructorInfoCache.TryGetValue(info, out var result))
+                return result;
+
+            result = info.GetCustomAttribute<T>();
+            ConstructorInfoCache.TryAdd(info, result);
+            return result;
+        }
+        
     }
 }
